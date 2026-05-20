@@ -456,9 +456,14 @@ function MaintenanceDue({ session }) {
 
   async function load() {
     setLoading(true)
+    const isSolo = session?.loginMode === 'solo'
+    const orgId = !isSolo && session?.userId ? session?.organizationId : null
+    let byDateQ = sb.from('equipment_inventory').select('*').eq('is_active', true).not('next_maintenance_date', 'is', null).order('next_maintenance_date')
+    let byUsageQ = sb.from('equipment_inventory').select('*').eq('is_active', true).not('max_usage_hours', 'is', null)
+    if (orgId) { byDateQ = byDateQ.eq('organization_id', orgId); byUsageQ = byUsageQ.eq('organization_id', orgId) }
     const [{ data: byDate }, { data: byUsage }, { data: bookings }] = await Promise.all([
-      sb.from('equipment_inventory').select('*').eq('is_active', true).not('next_maintenance_date', 'is', null).order('next_maintenance_date'),
-      sb.from('equipment_inventory').select('*').eq('is_active', true).not('max_usage_hours', 'is', null),
+      byDateQ,
+      byUsageQ,
       sb.from('equipment_bookings').select('equipment_id, start_time, end_time').eq('status', 'confirmed'),
     ])
     const usageHrs = {}

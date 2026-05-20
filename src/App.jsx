@@ -91,10 +91,15 @@ export default function App() {
       } catch {}
     }
     const loginMode = localStorage.getItem('ilab_login_mode')
-    if (loginMode === 'solo') {
+    const done = () => {
       setLoading(false)
+      if (isNative()) import('@capacitor/splash-screen').then(({ SplashScreen }) => SplashScreen.hide()).catch(() => {})
+    }
+    if (loginMode === 'solo') {
+      done()
     } else {
-      refreshCache().finally(() => setLoading(false))
+      const timeout = new Promise(resolve => setTimeout(resolve, 8000))
+      Promise.race([refreshCache(), timeout]).finally(done)
     }
   }, [])
 
@@ -151,7 +156,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
+    if (session?.userId && (session?.role === 'user' || session?.role === 'admin' || session?.role === 'student')) {
       sb.from('user_screen_access').select('screen_key').eq('user_id', session.userId)
         .then(({ data }) => {
           if (data?.length) setUserAccess(new Set(data.map(r => r.screen_key)))
@@ -170,12 +175,11 @@ export default function App() {
       return
     }
     if (session?.role === 'student') {
-      const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages', 'barcode', 'equipmentscan']
-      if (!allowed.includes(screen)) setScreen('dashboard')
+      const baseAllowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages', 'barcode', 'barcodeqr', 'equipmentscan', 'home', 'equipment', 'pm', 'history']
+      if (!baseAllowed.includes(screen) && !(userAccess && userAccess.has(screen))) setScreen('dashboard')
     }
-    if (screen === 'pm' && session?.role === 'student') setScreen('dashboard')
-    // equipmentscan, barcodeqr, barcode bypass per-user access control
-    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail', 'pm', 'barcode', 'equipmentscan', 'barcodeqr', 'orgadmin'])
+    // equipmentscan, barcodeqr, barcode, home, equipment bypass per-user access control
+    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail', 'pm', 'barcode', 'equipmentscan', 'barcodeqr', 'orgadmin', 'home', 'equipment', 'projects', 'training', 'history', 'equipmenthub', 'booking', 'remessages'])
     if ((session?.role === 'user' || session?.role === 'admin') && userAccess && !INTERNAL.has(screen)) {
       if (!userAccess.has(screen)) setScreen('dashboard')
     }

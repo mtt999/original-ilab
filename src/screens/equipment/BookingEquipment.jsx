@@ -1138,12 +1138,17 @@ function BookingHistory({ session }) {
 
   async function load() {
     setLoading(true)
-    const [{ data: eq }, { data: bk }] = await Promise.all([
-      sb.from('equipment_inventory').select('id, equipment_name, nickname, category').eq('is_active', true).order('nickname'),
-      canEdit(session)
-        ? sb.from('equipment_bookings').select('*').order('start_time', { ascending: false }).limit(1000)
-        : sb.from('equipment_bookings').select('*').eq('user_id', session.userId).order('start_time', { ascending: false })
-    ])
+    const isSolo = session?.loginMode === 'solo'
+    const orgId = !isSolo && session?.userId ? session?.organizationId : null
+    let eqQ = sb.from('equipment_inventory').select('id, equipment_name, nickname, category').eq('is_active', true).order('nickname')
+    if (orgId) eqQ = eqQ.eq('organization_id', orgId)
+    const { data: eq } = await eqQ
+    const orgEqIds = (eq || []).map(e => e.id)
+    let bkQ = canEdit(session)
+      ? sb.from('equipment_bookings').select('*').order('start_time', { ascending: false }).limit(1000)
+      : sb.from('equipment_bookings').select('*').eq('user_id', session.userId).order('start_time', { ascending: false })
+    if (orgId && canEdit(session) && orgEqIds.length > 0) bkQ = bkQ.in('equipment_id', orgEqIds)
+    const { data: bk } = await bkQ
     setEquipment(eq || [])
     setBookings(bk || [])
     setLoading(false)
@@ -1338,10 +1343,15 @@ function BookingSettings({ session }) {
 
   async function load() {
     setLoading(true)
+    const isSolo = session?.loginMode === 'solo'
+    const orgId = !isSolo && session?.userId ? session?.organizationId : null
+    let eqQ = sb.from('equipment_inventory').select('id, equipment_name, nickname').eq('is_active', true).order('nickname')
+    let uQ = sb.from('users').select('id, name, role').eq('is_active', true).neq('role', 'admin').order('name')
+    if (orgId) { eqQ = eqQ.eq('organization_id', orgId); uQ = uQ.eq('organization_id', orgId) }
     const [{ data: eq }, { data: s }, { data: u }] = await Promise.all([
-      sb.from('equipment_inventory').select('id, equipment_name, nickname').eq('is_active', true).order('nickname'),
+      eqQ,
       sb.from('equipment_booking_settings').select('*'),
-      sb.from('users').select('id, name, role').eq('is_active', true).neq('role', 'admin').order('name'),
+      uQ,
     ])
     setEquipment(eq || [])
     const map = {}; (s || []).forEach(r => map[r.equipment_id] = r); setSettings(map)

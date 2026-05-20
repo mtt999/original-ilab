@@ -139,7 +139,13 @@ export default function REMessages() {
   async function load() {
     setLoading(true)
     let query = sb.from('re_messages').select('*').order('created_at', { ascending: false })
-    if (!isAdmin) query = query.or(`receiver_id.eq.${session.userId},sender_id.eq.${session.userId}`)
+    if (!isAdmin) {
+      query = query.or(`receiver_id.eq.${session.userId},sender_id.eq.${session.userId}`)
+    } else if (session?.organizationId && session?.userId) {
+      const { data: orgUsers } = await sb.from('users').select('id').eq('organization_id', session.organizationId).eq('is_active', true)
+      const orgIds = (orgUsers || []).map(u => u.id).join(',')
+      if (orgIds) query = query.or(`sender_id.in.(${orgIds}),receiver_id.in.(${orgIds})`)
+    }
     const { data } = await query
     setMessages(data || [])
     setLoading(false)

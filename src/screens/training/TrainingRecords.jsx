@@ -489,6 +489,7 @@ function EquipmentTraining({ students, session }) {
     setLoading(true)
     let equipQuery = sb.from('equipment_inventory').select('id, equipment_name, nickname, category, location').eq('is_active', true).order('nickname')
     if (session?.loginMode === 'solo') equipQuery = equipQuery.eq('created_by', session.userId)
+    else if (session?.organizationId) equipQuery = equipQuery.eq('organization_id', session.organizationId)
     const [{ data: eq }, { data: rec }, { data: retrainReqs }] = await Promise.all([
       equipQuery,
       sb.from('training_equipment').select('*'),

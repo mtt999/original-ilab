@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { sb } from '../../lib/supabase'
 import { useAppStore } from '../../store/useAppStore'
-import { isNative, scanBarcode } from '../../lib/scanner.js'
+import jsQR from 'jsqr'
 
 const TYPE_LABELS = { aggregate: 'Aggregate', asphalt_binder: 'Asphalt Binder', plant_mix: 'Plant Mix', cores: 'Cores', other: 'Other' }
 const typeLabel = t => TYPE_LABELS[t] || t || '—'
@@ -84,26 +84,11 @@ function ScanTab() {
   const [manualInput, setManualInput] = useState('')
   const [result, setResult] = useState(null)
   const [looking, setLooking] = useState(false)
-  const [detectorSupported, setDetectorSupported] = useState(true)
-  const [nativeScanning, setNativeScanning] = useState(false)
 
   useEffect(() => {
-    if (isNative()) return  // native app: don't auto-start web camera
     startCamera()
     return () => stopCamera()
   }, [])
-
-  async function handleNativeScan() {
-    setNativeScanning(true)
-    try {
-      const value = await scanBarcode()
-      lookupBarcode(value)
-    } catch (e) {
-      if (e.message !== 'No barcode detected.') setCameraError(e.message)
-    } finally {
-      setNativeScanning(false)
-    }
-  }
 
   async function startCamera() {
     setCameraError('')
@@ -133,28 +118,47 @@ function ScanTab() {
   }
 
   function initDetector() {
-    if (!('BarcodeDetector' in window)) { setDetectorSupported(false); return }
-    try {
-      detectorRef.current = new window.BarcodeDetector({
-        formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'data_matrix'],
-      })
-      setScanning(true)
-      detectLoop()
-    } catch { setDetectorSupported(false) }
+    if ('BarcodeDetector' in window) {
+      try {
+        detectorRef.current = new window.BarcodeDetector({
+          formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'data_matrix'],
+        })
+      } catch { /* fall through to jsQR */ }
+    }
+    setScanning(true)
+    detectLoop()
   }
 
   function detectLoop() {
     const video = videoRef.current
     if (!video || video.readyState < 2) { animRef.current = requestAnimationFrame(detectLoop); return }
-    detectorRef.current.detect(video).then(codes => {
-      if (codes.length > 0 && codes[0].rawValue) {
+
+    if (detectorRef.current) {
+      detectorRef.current.detect(video).then(codes => {
+        if (codes.length > 0 && codes[0].rawValue) {
+          setScanning(false)
+          if (animRef.current) cancelAnimationFrame(animRef.current)
+          lookupBarcode(codes[0].rawValue)
+          return
+        }
+        animRef.current = requestAnimationFrame(detectLoop)
+      }).catch(() => { animRef.current = requestAnimationFrame(detectLoop) })
+    } else {
+      const canvas = canvasRef.current
+      if (!canvas || !video.videoWidth) { animRef.current = requestAnimationFrame(detectLoop); return }
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const code = jsQR(imageData.data, imageData.width, imageData.height)
+      if (code?.data) {
         setScanning(false)
-        if (animRef.current) cancelAnimationFrame(animRef.current)
-        lookupBarcode(codes[0].rawValue)
+        lookupBarcode(code.data)
         return
       }
       animRef.current = requestAnimationFrame(detectLoop)
-    }).catch(() => { animRef.current = requestAnimationFrame(detectLoop) })
+    }
   }
 
   async function lookupBarcode(value) {
@@ -175,22 +179,7 @@ function ScanTab() {
 
   return (
     <div>
-      {/* Native app: show a full-width scan button instead of the web camera UI */}
-      {isNative() && !result && (
-        <div className="card" style={{ padding: '28px 24px', textAlign: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>📷</div>
-          <button
-            onClick={handleNativeScan}
-            disabled={nativeScanning}
-            className="btn btn-primary"
-            style={{ width: '100%', fontSize: 16, padding: '14px 0', marginBottom: 8 }}
-          >
-            {nativeScanning ? 'Opening scanner…' : 'Scan Barcode / QR Code'}
-          </button>
-          {cameraError && <div style={{ fontSize: 13, color: 'var(--accent2)', marginTop: 8 }}>{cameraError}</div>}
-        </div>
-      )}
-      {!isNative() && !result && (
+      {!result && (
         <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
           {cameraError ? (
             <div style={{ padding: '32px 24px', textAlign: 'center' }}>
@@ -215,8 +204,7 @@ function ScanTab() {
                 </div>
               </div>
               <div style={{ position: 'absolute', bottom: 12, left: 0, right: 0, textAlign: 'center' }}>
-                {scanning && detectorSupported && <span style={{ background: 'rgba(0,0,0,0.55)', color: '#00e5b0', fontSize: 12, padding: '4px 14px', borderRadius: 99, fontWeight: 500 }}>Scanning…</span>}
-                {!detectorSupported && !cameraError && <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, padding: '4px 14px', borderRadius: 99 }}>Auto-scan not supported — use manual entry below</span>}
+                {scanning && <span style={{ background: 'rgba(0,0,0,0.55)', color: '#00e5b0', fontSize: 12, padding: '4px 14px', borderRadius: 99, fontWeight: 500 }}>Scanning…</span>}
               </div>
             </div>
           )}
@@ -254,7 +242,7 @@ function ScanTab() {
         <div className="card">
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Manual entry</div>
           <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
-            {detectorSupported && !cameraError ? 'Or type a barcode ID directly:' : 'Enter the barcode ID printed on the label:'}
+            {cameraError ? 'Enter the barcode ID printed on the label:' : 'Or type a barcode ID directly:'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -277,6 +265,7 @@ function ScanTab() {
 
 // ── All Materials Tab ───────────────────────────────────────────
 function MaterialsTab() {
+  const { session } = useAppStore()
   const [materials, setMaterials] = useState([])
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -289,10 +278,13 @@ function MaterialsTab() {
 
   async function load() {
     setLoading(true)
-    const [{ data: mats }, { data: projs }] = await Promise.all([
-      sb.from('project_materials').select('*, projects(id, name, project_id)').order('created_at', { ascending: false }),
-      sb.from('projects').select('id, name, project_id').order('name'),
-    ])
+    const orgId = session?.loginMode !== 'solo' ? session?.organizationId : null
+    let projQ = sb.from('projects').select('id, name, project_id').order('name')
+    if (orgId) projQ = projQ.eq('organization_id', orgId)
+    const { data: projs } = await projQ
+    let matsQ = sb.from('project_materials').select('*, projects(id, name, project_id)').order('created_at', { ascending: false })
+    if (orgId && projs?.length) matsQ = matsQ.in('project_id', projs.map(p => p.id))
+    const { data: mats } = await matsQ
     setMaterials(mats || [])
     setProjects(projs || [])
     setLoading(false)
@@ -511,7 +503,7 @@ export default function BarcodeScannerScreen() {
   return (
     <div style={{ maxWidth: 600, margin: '0 auto' }}>
       <div style={{ marginBottom: 20 }}>
-        <div className="section-title">Barcode Scanner</div>
+        <div className="section-title">QR Scan</div>
         <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>Scan or browse project materials</div>
       </div>
       <ScannerContent />

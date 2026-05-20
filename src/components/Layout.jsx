@@ -61,7 +61,7 @@ export default function Layout({ children }) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: '#0d47a1', borderBottom: '1px solid #0a3d91', paddingLeft: 16, paddingRight: 16, paddingTop: 'calc(env(safe-area-inset-top, 0px) / 2)', paddingBottom: 8, height: 'calc(56px + env(safe-area-inset-top, 0px) / 2)', boxSizing: 'border-box', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0, zIndex: 100 }}>
+      <header style={{ background: '#0d47a1', borderBottom: '1px solid #0a3d91', paddingLeft: 16, paddingRight: 16, paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 8, height: 'calc(56px + env(safe-area-inset-top, 0px))', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, zIndex: 100 }}>
         <div onClick={() => setScreen('dashboard')} style={{ cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
           <ILabLogo size={42} />
           {!isMobile && (
@@ -94,17 +94,14 @@ export default function Layout({ children }) {
               )}
             </button>
           )}
-          {!isMobile && (
-            <button className="btn btn-sm" onClick={logout} style={{ border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#ffffff', flexShrink: 0 }}>Sign out</button>
-          )}
+          <button className="btn btn-sm" onClick={logout} style={{ border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#ffffff', flexShrink: 0 }}>{isMobile ? '↩' : 'Sign out'}</button>
         </div>
       </header>
 
       <main style={{
         flex: 1,
         minHeight: 0,
-        overflowY: 'scroll',
-        WebkitOverflowScrolling: 'touch',
+        overflowY: 'auto',
         maxWidth: screen === 'booking' ? '100%' : 960,
         margin: '0 auto',
         width: '100%',

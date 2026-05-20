@@ -176,7 +176,9 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages, a
     setLoading(true)
     try {
       const userId = session.userId; const userName = session.username
-      const { data: projects } = await sb.from('projects').select('id,title,status').or(`students.cs.{"${userName}"},students.ilike.%${userName}%`).eq('status','active')
+      let projQ = sb.from('projects').select('id,title,status').or(`students.cs.{"${userName}"},students.ilike.%${userName}%`).eq('status','active')
+      if (session?.organizationId) projQ = projQ.eq('organization_id', session.organizationId)
+      const { data: projects } = await projQ
       const [freshRes,golfRes,alarmRes,eqRes,pendingRes,bookingsRes] = await Promise.all([
         sb.from('training_fresh').select('id,admin_approved').eq('user_id',userId).maybeSingle(),
         sb.from('training_golf_car').select('id').eq('user_id',userId).maybeSingle(),
@@ -251,6 +253,7 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages, a
 }
 
 function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, moduleImages }) {
+  const { session } = useAppStore()
   const [stats, setStats] = useState({ activeProjects:0, students:0, pendingTraining:0, lowSupplies:0 })
   const [recentInspections, setRecentInspections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -259,10 +262,20 @@ function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, moduleIm
   async function loadStats() {
     setLoading(true)
     try {
+      const isSuperAdmin = !session?.userId
+      const orgId = session?.organizationId
+      let suppliesQ = sb.from('supplies').select('id,min_qty')
+      let projectsQ = sb.from('projects').select('id,status').eq('status','active')
+      let studentsQ = sb.from('users').select('id').eq('role','student').eq('is_active',true)
+      if (!isSuperAdmin && orgId) {
+        suppliesQ = suppliesQ.eq('organization_id', orgId)
+        projectsQ = projectsQ.eq('organization_id', orgId)
+        studentsQ = studentsQ.eq('organization_id', orgId)
+      }
       const [supplies,projects,students,inspections,training] = await Promise.all([
-        sb.from('supplies').select('id,min_qty'),
-        sb.from('projects').select('id,status').eq('status','active'),
-        sb.from('users').select('id').eq('role','student').eq('is_active',true),
+        suppliesQ,
+        projectsQ,
+        studentsQ,
         sb.from('inspections').select('id,room_name,inspected_at,flag_count,inspector').order('inspected_at',{ascending:false}).limit(5),
         sb.from('training_fresh').select('id').eq('admin_approved',false),
       ])

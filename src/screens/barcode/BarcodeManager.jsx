@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { sb } from '../../lib/supabase'
 import { useAppStore } from '../../store/useAppStore'
 import { ScannerContent } from './BarcodeScannerScreen'
+import { isNative } from '../../lib/scanner.js'
 
 // Colorful logo for screen preview
 function ILabLogo({ size = 40 }) {
@@ -45,7 +46,8 @@ const PRINT_LOGO_SVG = (size) => `<svg width="${size}" height="${size}" viewBox=
 </svg>`
 
 function getScanUrl(equipmentId) {
-  return `${window.location.origin}/ilab/?eq=${equipmentId}`
+  const base = isNative() ? 'https://mtt999.github.io/ilab/' : `${window.location.origin}/ilab/`
+  return `${base}?eq=${equipmentId}`
 }
 
 // QR label for screen preview — colorful logo, iLab logo centered over QR
@@ -497,21 +499,21 @@ export default function BarcodeManager() {
   useEffect(() => { loadEquipment() }, [])
 
   async function loadEquipment() {
-    const { data } = await sb.from('equipment_inventory')
-      .select('id, equipment_name, nickname, category, location')
-      .eq('is_active', true)
-      .order('category')
-      .order('equipment_name')
+    const isSolo = session?.loginMode === 'solo'
+    let q = sb.from('equipment_inventory').select('id, equipment_name, nickname, category, location').eq('is_active', true).order('category').order('equipment_name')
+    if (!isSolo && session?.organizationId) q = q.eq('organization_id', session.organizationId)
+    const { data } = await q
     setEquipment(data || [])
     setLoading(false)
   }
 
   if (!isAdminOrStaff) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontWeight: 600, fontSize: 16 }}>Admin / Staff only</div>
+    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <div className="section-title">Barcode Scanner</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>Scan or browse project materials</div>
       </div>
+      <ScannerContent />
     </div>
   )
 
